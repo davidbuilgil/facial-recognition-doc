@@ -28,6 +28,39 @@ df <- df %>%
 
 # Count deployments in wards
 wards <- df %>%
+  group_by(`Ward Code`) %>%
+  mutate(`Faces seen` = as.numeric(`Faces seen`)) %>%
+  summarise(
+    total_deployments = n(),
+    total_minutes = sum(total_minutes, na.rm = TRUE),
+    total_faces = sum(`Faces seen`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+wards2023 <- df %>%
+  filter(Year < 2024) %>%
+  group_by(`Ward Code`) %>%
+  mutate(`Faces seen` = as.numeric(`Faces seen`)) %>%
+  summarise(
+    total_deployments = n(),
+    total_minutes = sum(total_minutes, na.rm = TRUE),
+    total_faces = sum(`Faces seen`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+wards2024 <- df %>%
+  filter(Year == 2024) %>%
+  group_by(`Ward Code`, `Ward (approx)`) %>%
+  mutate(`Faces seen` = as.numeric(`Faces seen`)) %>%
+  summarise(
+    total_deployments = n(),
+    total_minutes = sum(total_minutes, na.rm = TRUE),
+    total_faces = sum(`Faces seen`, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+wards2025 <- df %>%
+  filter(Year == 2025) %>%
   group_by(`Ward Code`, `Ward (approx)`) %>%
   mutate(`Faces seen` = as.numeric(`Faces seen`)) %>%
   summarise(
@@ -74,8 +107,35 @@ wards_all <- crime_totals %>%
   left_join(wards, by = c("WardCode" = "Ward Code")) %>%
   left_join(wards_black, by = c("WardCode" = "ward code"))
 
+wards2023 <- crime_totals %>%
+  left_join(wards2023, by = c("WardCode" = "Ward Code")) %>%
+  left_join(wards_black, by = c("WardCode" = "ward code"))
+
+wards2024 <- crime_totals %>%
+  left_join(wards2024, by = c("WardCode" = "Ward Code")) %>%
+  left_join(wards_black, by = c("WardCode" = "ward code"))
+
+wards2025 <- crime_totals %>%
+  left_join(wards2025, by = c("WardCode" = "Ward Code")) %>%
+  left_join(wards_black, by = c("WardCode" = "ward code"))
+
 # Fill NAs with 0s in facial recognition deployment
 wards_all <- wards_all %>%
+  mutate(total_deployments = ifelse(is.na(total_deployments), 0, total_deployments),
+         total_minutes = ifelse(is.na(total_minutes), 0, total_minutes),
+         total_faces = ifelse(is.na(total_faces), 0 , total_faces))
+
+wards2023 <- wards2023 %>%
+  mutate(total_deployments = ifelse(is.na(total_deployments), 0, total_deployments),
+         total_minutes = ifelse(is.na(total_minutes), 0, total_minutes),
+         total_faces = ifelse(is.na(total_faces), 0 , total_faces))
+
+wards2024 <- wards2024 %>%
+  mutate(total_deployments = ifelse(is.na(total_deployments), 0, total_deployments),
+         total_minutes = ifelse(is.na(total_minutes), 0, total_minutes),
+         total_faces = ifelse(is.na(total_faces), 0 , total_faces))
+
+wards2025 <- wards2025 %>%
   mutate(total_deployments = ifelse(is.na(total_deployments), 0, total_deployments),
          total_minutes = ifelse(is.na(total_minutes), 0, total_minutes),
          total_faces = ifelse(is.na(total_faces), 0 , total_faces))
@@ -125,6 +185,27 @@ wards_all <- wards_all %>%
     crime_std = scale(total_crimes)
   )
 
+wards2023 <- wards2023 %>%
+  mutate(
+    black_std = scale(`Black Percentage`),
+    nonwhite_std = scale(nonwhite_percentage),
+    crime_std = scale(total_crimes)
+  )
+
+wards2024 <- wards2024 %>%
+  mutate(
+    black_std = scale(`Black Percentage`),
+    nonwhite_std = scale(nonwhite_percentage),
+    crime_std = scale(total_crimes)
+  )
+
+wards2025 <- wards2025 %>%
+  mutate(
+    black_std = scale(`Black Percentage`),
+    nonwhite_std = scale(nonwhite_percentage),
+    crime_std = scale(total_crimes)
+  )
+
 # Log transform dependent variables
 #wards_all <- wards_all %>%
 #  mutate(
@@ -142,7 +223,37 @@ var(wards_all$total_minutes)
 mean(wards_all$total_faces)
 var(wards_all$total_faces)
 
-# Hurdle models
+# Hurdle models for deployments each year
+hurdle2023 <- hurdle(
+  total_deployments ~ black_std + crime_std,
+  data = wards2023,
+  dist = "negbin"
+)
+
+hurdle2024 <- hurdle(
+  total_deployments ~ black_std + crime_std,
+  data = wards2024,
+  dist = "negbin"
+)
+
+hurdle2025 <- hurdle(
+  total_deployments ~ black_std + crime_std,
+  data = wards2025,
+  dist = "negbin"
+)
+
+summary(hurdle2023)
+summary(hurdle2024)
+summary(hurdle2025)
+
+tab_model(hurdle2023, hurdle2024, hurdle2025,
+          show.ci = FALSE,
+          show.p = TRUE,
+          dv.labels = c("2023", "2024", "2025"),
+          title = "Hurdle Model Results: Live Facial Recognition Use",
+          file = here("LFR_Hurdle_Models_Years.doc"))
+
+# Hurdle models for outcomes
 hurdle_deployments <- hurdle(
   total_deployments ~ black_std + crime_std,
   data = wards_all,
