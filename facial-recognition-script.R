@@ -83,20 +83,37 @@ wards_black <- census %>%
 # Read crime data
 crime <- read.csv(here('data/MPS Ward Level Crime (most recent 24 months).csv'))
 
-# Step 1: Create valid month column names
+# Create valid month column names
 years <- 2023:2025
 months <- sprintf("%02d", 1:12)
 valid_ym <- as.vector(outer(years, months, paste0))
 valid_ym <- valid_ym[valid_ym >= "202307" & valid_ym <= "202506"]
 month_cols <- paste0("X", valid_ym)
 
-# Step 2: Summarise by WardName
+# Summarise by Ward
 crime_totals <- crime %>%
   group_by(WardCode, WardName) %>%
   summarise(
     total_crimes = sum(across(all_of(month_cols), as.numeric), na.rm = TRUE),
     .groups = "drop"
   )
+
+
+# Load workday population
+#workday <- read.csv(here('data/WD002_oa.csv'))
+#workday <- workday %>%
+#  group_by(Output.Areas.Code) %>%
+#  summarise(wd_pop = sum(Count))
+#oa_to_ward <- read.csv(here('data/Output_Area_(2021)_to_Ward_(2024)_to_LAD_(May_2024)_Best_Fit_Lookup_in_EW.csv'))
+#workday <- workday %>%
+#  left_join(oa_to_ward, by = c("Output.Areas.Code" = "OA21CD"))
+#workday <- workday %>%
+#  group_by(WD24CD) %>%
+#  summarise(wd_pop = sum(wd_pop)) 
+#write.csv(workday, here("data/workday.csv"))
+workday <- read.csv(here('data/workday.csv'))
+workday <- workday %>%
+  dplyr::select(-X)
 
 # Create data of Wards
 #wards_all <- crime_totals %>%
@@ -105,18 +122,22 @@ crime_totals <- crime %>%
 
 wards_all <- crime_totals %>%
   left_join(wards, by = c("WardCode" = "Ward Code")) %>%
+  left_join(workday, by = c("WardCode" = "WD24CD")) %>%
   left_join(wards_black, by = c("WardCode" = "ward code"))
 
 wards2023 <- crime_totals %>%
   left_join(wards2023, by = c("WardCode" = "Ward Code")) %>%
+  left_join(workday, by = c("WardCode" = "WD24CD")) %>%
   left_join(wards_black, by = c("WardCode" = "ward code"))
 
 wards2024 <- crime_totals %>%
   left_join(wards2024, by = c("WardCode" = "Ward Code")) %>%
+  left_join(workday, by = c("WardCode" = "WD24CD")) %>%
   left_join(wards_black, by = c("WardCode" = "ward code"))
 
 wards2025 <- crime_totals %>%
   left_join(wards2025, by = c("WardCode" = "Ward Code")) %>%
+  left_join(workday, by = c("WardCode" = "WD24CD")) %>%
   left_join(wards_black, by = c("WardCode" = "ward code"))
 
 # Fill NAs with 0s in facial recognition deployment
@@ -182,28 +203,32 @@ wards_all <- wards_all %>%
   mutate(
     black_std = scale(`Black Percentage`),
     nonwhite_std = scale(nonwhite_percentage),
-    crime_std = scale(total_crimes)
+    crime_std = scale(total_crimes),
+    wd_pop_std = scale(wd_pop)
   )
 
 wards2023 <- wards2023 %>%
   mutate(
     black_std = scale(`Black Percentage`),
     nonwhite_std = scale(nonwhite_percentage),
-    crime_std = scale(total_crimes)
+    crime_std = scale(total_crimes),
+    wd_pop_std = scale(wd_pop)
   )
 
 wards2024 <- wards2024 %>%
   mutate(
     black_std = scale(`Black Percentage`),
     nonwhite_std = scale(nonwhite_percentage),
-    crime_std = scale(total_crimes)
+    crime_std = scale(total_crimes),
+    wd_pop_std = scale(wd_pop)
   )
 
 wards2025 <- wards2025 %>%
   mutate(
     black_std = scale(`Black Percentage`),
     nonwhite_std = scale(nonwhite_percentage),
-    crime_std = scale(total_crimes)
+    crime_std = scale(total_crimes),
+    wd_pop_std = scale(wd_pop)
   )
 
 # Log transform dependent variables
@@ -225,19 +250,19 @@ var(wards_all$total_faces)
 
 # Hurdle models for deployments each year
 hurdle2023 <- hurdle(
-  total_deployments ~ black_std + crime_std,
+  total_deployments ~ black_std + crime_std + wd_pop_std,
   data = wards2023,
   dist = "negbin"
 )
 
 hurdle2024 <- hurdle(
-  total_deployments ~ black_std + crime_std,
+  total_deployments ~ black_std + crime_std + wd_pop_std,
   data = wards2024,
   dist = "negbin"
 )
 
 hurdle2025 <- hurdle(
-  total_deployments ~ black_std + crime_std,
+  total_deployments ~ black_std + crime_std + wd_pop_std,
   data = wards2025,
   dist = "negbin"
 )
@@ -255,19 +280,19 @@ tab_model(hurdle2023, hurdle2024, hurdle2025,
 
 # Hurdle models for outcomes
 hurdle_deployments <- hurdle(
-  total_deployments ~ black_std + crime_std,
+  total_deployments ~ black_std + crime_std + wd_pop_std,
   data = wards_all,
   dist = "negbin"
 )
 
 hurdle_minutes <- hurdle(
-  total_minutes ~ black_std + crime_std,
+  total_minutes ~ black_std + crime_std + wd_pop_std,
   data = wards_all,
   dist = "negbin"
 )
 
 hurdle_faces <- hurdle(
-  total_faces ~ black_std + crime_std,
+  total_faces ~ black_std + crime_std + wd_pop_std,
   data = wards_all,
   dist = "negbin"
 )
@@ -286,32 +311,30 @@ tab_model(hurdle_deployments, hurdle_minutes, hurdle_faces,
           file = here("LFR_Hurdle_Models.doc"))
 
 #Summary:
-# We analysed whether the use of live facial recognition (LFR) across London wards could be explained by the proportion of Black residents in each area, after accounting for local crime levels. 
-# We looked at three different outcomes: whether LFR was used in an area at all (binary use), and if so, how intensively it was used—measured by the number of deployments, the total minutes of deployment, and the number of faces detected.
-# The results suggest that the racial composition of a ward is associated with the likelihood that LFR is used at all. Specifically, wards with higher proportions of Black residents were significantly more likely to receive any LFR deployment, even when crime levels were taken into account. 
-# A one standard deviation increase in Black population associated with a 31% increase in the odds of any LFR use.
-# However, once a ward had received at least one deployment, the intensity of LFR use—how many times it was deployed, how long it ran, or how many faces it detected—was not significantly related to the ethnic composition of the ward. 
-# In contrast, local crime levels played a significant role in both parts of the model. 
-# Areas with more reported crime were not only more likely to receive LFR deployments in the first place, but also experienced more frequent and longer-lasting use of the technology, and a higher number of faces detected.
-# In short, while crime appears to drive both the decision to use LFR and how heavily it is applied, the racial composition of an area seems to matter primarily in the decision of whether to deploy the technology at all.
+#In this analysis of live facial recognition (LFR) use, we explored whether areas with a higher proportion of Black residents were more likely to be targeted by deployments. 
+#We also took into account other local characteristics such as crime levels and working-day population. 
+#The findings suggest that LFR was somewhat more likely to be used in areas with more Black residents, but we cannot say with confidence that this pattern is real rather than due to chance. 
+#In the areas where LFR was used, there was no clear link between the ethnic makeup of the population and how intensively the technology was deployed—whether measured by the number of operations, their duration, or the number of faces scanned. 
+#In contrast, higher crime levels were clearly linked to both the likelihood of LFR being used and the number of faces scanned. 
+#Overall, while the analysis points to a possible association between ethnicity and the use of LFR, the evidence is not strong enough to draw firm conclusions.
 
 # Analysis for non whites as sensitivity
 
 # Hurdle models
 hurdle_deployments_nw <- hurdle(
-  total_deployments ~ nonwhite_std + crime_std,
+  total_deployments ~ nonwhite_std + crime_std + wd_pop_std,
   data = wards_all,
   dist = "negbin"
 )
 
 hurdle_minutes_nw <- hurdle(
-  total_minutes ~ nonwhite_std + crime_std,
+  total_minutes ~ nonwhite_std + crime_std + wd_pop_std,
   data = wards_all,
   dist = "negbin"
 )
 
 hurdle_faces_nw <- hurdle(
-  total_faces ~ nonwhite_std + crime_std,
+  total_faces ~ nonwhite_std + crime_std + wd_pop_std,
   data = wards_all,
   dist = "negbin"
 )
